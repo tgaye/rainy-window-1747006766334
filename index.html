@@ -1,0 +1,359 @@
+<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rainy Window</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #222;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: Arial, sans-serif;
+       
+  frameRate(60); }
+        #canvas-container {
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: center;
+            position: relative;
+        }
+        .instructions {
+            position: absolute;
+            bottom: 20px;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 14px;
+            text-align: center;
+            width: 100%;
+            pointer-events: none;
+        }
+    </style>
+
+<base target="_self">
+
+
+  </head><body><button id="fs-toggle">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+      <path d="M1.5 1H6v1.5H3v3H1.5V1zM10 1h4.5v4.5H13v-3h-3V1zM1.5 10.5H3v3h3V15H1.5v-4.5zM13 13.5v-3h1.5V15H10v-1.5h3z"></path>
+    </svg>
+  </button>
+    <div id="canvas-container">
+        <div class="instructions">Move your finger/cursor to wipe the window • Click/tap to change time of day</div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.8.0/lib/p5.js"></script>
+    <script>
+        const sketch = (p) => {
+            let rain = [];
+            let windowWipes = [];
+            let isNight = false;
+            let lightningTimer = 0;
+            let lightningActive = false;
+            let wipeRadius = 100;
+            let rainIntensity = 0.5;
+            let interiorObjects = [];
+            let bgImage;
+            let lastWipeTime = 0;
+            let wipeCooldown = 100;
+            let rainSound;
+            let thunderSound;
+            let soundEnabled = false;
+
+            p.preload = function() {
+                // Load sound files if needed
+                // rainSound = p.loadSound('rain.mp3');
+                // thunderSound = p.loadSound('thunder.mp3');
+            };
+
+            p.setup = function() {
+                let canvas = p.createCanvas(p.min(p.windowWidth, 1200), p.windowHeight * 0.9);
+                canvas.parent('canvas-container');
+                p.colorMode(p.HSB, 360, 100, 100, 1);
+                p.noStroke();
+
+                // Initialize rain particles
+                for (let i = 0; i < 500; i++) {
+                    rain.push(new Raindrop());
+                }
+
+                // Create interior objects (furniture, plants, etc.)
+                createInteriorObjects();
+            };
+
+            function createInteriorObjects() {
+                interiorObjects = [];
+                // Add some random furniture/objects
+                for (let i = 0; i < 5; i++) {
+                    interiorObjects.push({
+                        x: p.random(p.width * 0.1, p.width * 0.9),
+                        y: p.random(p.height * 0.5, p.height * 0.9),
+                        w: p.random(30, 100),
+                        h: p.random(50, 150),
+                        hue: p.random(20, 40),
+                        brightness: p.random(30, 70)
+                    });
+                }
+            }
+
+            function Raindrop() {
+                this.reset = function() {
+                    this.x = p.random(p.width);
+                    this.y = p.random(-100, -10);
+                    this.z = p.random(0.5, 2);
+                    this.len = p.map(this.z, 0.5, 2, 5, 15);
+                    this.speed = p.map(this.z, 0.5, 2, 5, 15);
+                    this.thickness = p.map(this.z, 0.5, 2, 1, 3);
+                    this.wind = p.random(-0.5, 0.5);
+                    this.alpha = p.random(0.6, 0.9);
+                };
+                this.reset();
+
+                this.update = function() {
+                    this.y += this.speed * rainIntensity;
+                    this.x += this.wind * rainIntensity;
+
+                    // Check if raindrop is wiped
+                    for (let wipe of windowWipes) {
+                        let d = p.dist(this.x, this.y, wipe.x, wipe.y);
+                        if (d < wipe.radius * 1.5) {
+                            this.y = p.random(-100, -10);
+                            this.x = p.random(p.width);
+                        }
+                    }
+
+                    // Reset if off screen
+                    if (this.y > p.height + 10 || this.x < -10 || this.x > p.width + 10) {
+                        this.reset();
+                    }
+                };
+
+                this.display = function() {
+                    let brightness = isNight ? 70 : 90;
+                    p.stroke(200, 80, brightness, this.alpha);
+                    p.strokeWeight(this.thickness);
+                    p.line(this.x, this.y, this.x + this.wind * 5, this.y + this.len);
+                };
+            }
+
+            function WindowWipe(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = wipeRadius;
+                this.life = 100;
+                this.maxLife = 100;
+
+                this.update = function() {
+                    this.life -= 2;
+                    this.radius *= 0.98;
+                };
+
+                this.display = function() {
+                    let alpha = p.map(this.life, 0, this.maxLife, 0, 0.3);
+                    p.fill(0, 0, 100, alpha);
+                    p.noStroke();
+                    p.ellipse(this.x, this.y, this.radius * 2);
+                };
+
+                this.isDead = function() {
+                    return this.life <= 0;
+                };
+            }
+
+            p.draw = function() {
+                // Background - changes based on day/night
+                if (isNight) {
+                    p.background(240, 80, 10);
+                } else {
+                    p.background(200, 30, 90);
+                }
+
+                // Draw background view (simplified cityscape)
+                drawBackground();
+
+                // Handle lightning
+                handleLightning();
+
+                // Update and display rain
+                for (let drop of rain) {
+                    drop.update();
+                    drop.display();
+                }
+
+                // Update and display window wipes
+                for (let i = windowWipes.length - 1; i >= 0; i--) {
+                    windowWipes[i].update();
+                    windowWipes[i].display();
+                    if (windowWipes[i].isDead()) {
+                        windowWipes.splice(i, 1);
+                    }
+                }
+
+                // Draw interior objects
+                drawInterior();
+
+                // Draw window frame
+                drawWindowFrame();
+
+                // Rain intensity changes slightly over time
+                rainIntensity = 0.3 + p.noise(p.frameCount * 0.01) * 0.4;
+
+                // Occasionally add more rain
+                if (p.frameCount % 60 === 0 && rain.length < 800) {
+                    rain.push(new Raindrop());
+                }
+            };
+
+            function drawBackground() {
+                // Draw distant city silhouette
+                p.fill(isNight ? 240 : 220, 80, isNight ? 20 : 40);
+                p.noStroke();
+                
+                // Create random building shapes
+                let buildingWidth = p.width / 20;
+                for (let x = -buildingWidth; x < p.width + buildingWidth; x += buildingWidth) {
+                    let h = p.random(p.height * 0.2, p.height * 0.5);
+                    p.rect(x, p.height - h, buildingWidth * 0.9, h);
+                }
+
+                // Add some lit windows at night
+                if (isNight) {
+                    for (let i = 0; i < 30; i++) {
+                        p.fill(50, 80, 90, p.random(0.7, 1));
+                        p.rect(
+                            p.random(p.width),
+                            p.random(p.height * 0.6, p.height * 0.9),
+                            p.random(3, 10),
+                            p.random(3, 10)
+                        );
+                    }
+                }
+            }
+
+            function handleLightning() {
+                if (isNight) {
+                    lightningTimer--;
+                    if (lightningTimer <= 0 && p.random() < 0.002) {
+                        lightningActive = true;
+                        lightningTimer = p.random(60, 180);
+                        // if (soundEnabled) thunderSound.play();
+                    }
+
+                    if (lightningActive) {
+                        let flashAlpha = p.random(0.3, 0.8);
+                        p.fill(220, 20, 100, flashAlpha);
+                        p.rect(0, 0, p.width, p.height);
+                        
+                        if (p.random() < 0.1) {
+                            lightningActive = false;
+                        }
+                    }
+                }
+            }
+
+            function drawInterior() {
+                // Draw interior objects with lighting based on day/night
+                for (let obj of interiorObjects) {
+                    let brightness = isNight ? obj.brightness * 0.6 : obj.brightness;
+                    p.fill(obj.hue, 50, brightness);
+                    p.rect(obj.x, obj.y, obj.w, obj.h);
+                    
+                    // Add some details
+                    p.fill(obj.hue, 30, brightness + 10);
+                    p.rect(obj.x + 5, obj.y + 5, obj.w - 10, 10);
+                }
+            }
+
+            function drawWindowFrame() {
+                p.noFill();
+                p.stroke(isNight ? 240 : 220, 30, isNight ? 30 : 70);
+                p.strokeWeight(20);
+                p.rect(0, 0, p.width, p.height);
+                
+                // Window panes
+                p.strokeWeight(2);
+                let paneCount = 4;
+                let paneSpacing = p.width / paneCount;
+                for (let i = 1; i < paneCount; i++) {
+                    p.line(i * paneSpacing, 0, i * paneSpacing, p.height);
+                }
+                p.line(0, p.height * 0.7, p.width, p.height * 0.7);
+            }
+
+            p.mouseMoved = function() {
+                if (p.millis() - lastWipeTime > wipeCooldown) {
+                    windowWipes.push(new WindowWipe(p.mouseX, p.mouseY));
+                    lastWipeTime = p.millis();
+                }
+            };
+
+            p.touchMoved = function() {
+                if (p.millis() - lastWipeTime > wipeCooldown) {
+                    windowWipes.push(new WindowWipe(p.mouseX, p.mouseY));
+                    lastWipeTime = p.millis();
+                }
+                return false; // Prevent scrolling
+            };
+
+            p.mousePressed = function() {
+                toggleDayNight();
+            };
+
+            p.touchStarted = function() {
+                toggleDayNight();
+                return false; // Prevent default touch behavior
+            };
+
+            function toggleDayNight() {
+                isNight = !isNight;
+                // if (soundEnabled) {
+                //     if (isNight) {
+                //         rainSound.loop();
+                //     } else {
+                //         rainSound.stop();
+                //     }
+                // }
+            }
+
+            p.windowResized = function() {
+                p.resizeCanvas(p.min(p.windowWidth, 1200), p.windowHeight * 0.9);
+                createInteriorObjects();
+            };
+        };
+
+        new p5(sketch);
+    
+  // Fullscreen toggle
+  document.getElementById('fs-toggle').addEventListener('click', function() {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(err => {
+        console.log('Fullscreen request failed: ', err);
+      });
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      }
+    }
+  });
+  
+  // Hide fullscreen button after inactivity
+  const fsButton = document.getElementById('fs-toggle');
+  let timeout;
+  document.addEventListener('mousemove', function() {
+    fsButton.style.opacity = '0.3';
+    clearTimeout(timeout);
+    timeout = setTimeout(() => {
+      fsButton.style.opacity = '0';
+    }, 2000);
+  });
+  </script>
+
+              
+          
+                
+          
+              
+</body></html>
